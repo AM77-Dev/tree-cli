@@ -1,101 +1,98 @@
+#!/usr/bin/env node
+
 const fs = require('fs')
-const File = require('./lib/File.js')
-const Dir = require('./lib/Dir.js')
 
-function type(stats) {
-    let type = {}
+const BRANCH = '├── ' 
+const INDENT = '    ' 
+const LAST_BRANCH = '└── ' 
+const VERTICAL = '│   ' 
 
-    type.isFile = false
-    type.isDir = false
-    type.isLink = false
+// reversed tree option
+const isReversed = false
+// raw output option
+const rawOutput = false
+// display hidden files option
+const displayHidden = false
+// so the user can print it in a file without the cli coloring spacail characteres 
+const colored = false
 
-    // File type
-    if(stats.isFile())
-        type.isFile = true
-    else{
-        // Directory type
-        if(stats.isDirectory())
-            type.isDir = true
-        else{
-            // Symbolic Link type
-            if(stats.isSymbolicLink()){
-                type.isLink = true
+const path = "."
+const cwdName = "."
+
+let directoriesNumber = 0
+let filesNumber = 0
+
+const dirColor = dirName => `\x1b[34m${dirName}\x1b[0m`
+
+const dirents2list = dirents => dirents.map(dirent => ({ name: dirent.name, isDir: dirent.isDirectory() }))
+
+const sort = list => list.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+
+const cwdContent = path => {
+    let items = fs.readdirSync(path, { withFileTypes: true })
+
+    if ( !displayHidden ) items = items.filter(item => item.name.slice(0, 1) !== '.')
+
+    const files = isReversed ? sort(dirents2list(items)).reverse() : sort(dirents2list(items))
+
+    files.map(file => { if (file.isDir) file.content = cwdContent(path + '/' + file.name) })
+    return files
+}
+
+const formatContent = (cwd, depth, isParentLast) => {
+    cwd.content.map((item, index) => { 
+        
+        if ( item.isDir ) {
+            if (colored) item.name = dirColor(item.name)
+            directoriesNumber ++
+        } else {
+            filesNumber ++
+        }
+
+        if ( depth === 0 ) {
+            if (index === cwd.content.length -1) { 
+                item.name = LAST_BRANCH + item.name
+                if ( item.isDir )  item.content = formatContent(item, depth + 1, [true])
+            } else {
+                item.name = BRANCH + item.name
+                if ( item.isDir )  item.content = formatContent(item, depth + 1, [false])
+            }
+        } else {
+            if (index === cwd.content.length -1) { 
+                item.name = generateBranches(depth, isParentLast) + LAST_BRANCH + item.name
+                if ( item.isDir )  item.content = formatContent(item, depth + 1, [...isParentLast, true])
+            } else {
+                item.name = generateBranches(depth, isParentLast) +  BRANCH + item.name
+                if ( item.isDir )  item.content = formatContent(item, depth + 1, [...isParentLast, false])
             }
         }
-    }
-
-    return type
-}
-
-
-function permissions(stats){
-    let permission = {}      
-
-    // owner permissions
-    permission.or = stats["mode"] & 400 ? true : false
-    permission.ow = stats["mode"] & 200 ? true : false
-    permission.ox = stats["mode"] & 100 ? true : false
-    //group permissions
-    permission.gr = stats["mode"] & 40 ? true : false
-    permission.gw = stats["mode"] & 20 ? true : false
-    permission.gx = stats["mode"] & 10 ? true : false
-    // others permissions
-    permission.tr = stats["mode"] & 4 ? true : false
-    permission.tw = stats["mode"] & 2 ? true : false
-    permission.tx = stats["mode"] & 1 ? true : false
-    
-    return permission
-}
-
-
-function tree(path){
-    let root = new Array()
-    root.push("lmmł")
-
-    fs.readdir(path, (err, items)=>{
-
-        if(err){
-            return err
-        }else{
-            
-            items.forEach(item => {
-                fs.lstat(`${path}/${item}`, (err, stats)=>{
-                    if(err){
-                        return err
-                    }else{
-                        if(stats.isFile()) {
-                            let f = new File()
-                            f.name = item
-                            f.size = stats.size
-                            f.owner = stats.uid
-                            f.group = stats.gid
-                            f.permissions = permissions(stats)
-                            f.type = type(stats)
-                            f.created_at = stats.birthtime
-                            f.last_modification = stats.mtime
-                            root.push(f)                          
-                        }else{
-                            if(stats.isDirectory()){
-                                let d = new Dir()
-                                d.name = item
-                                d.size = stats.size
-                                d.owner = stats.uid
-                                d.group = stats.gid
-                                d.permissions = permissions(stats)
-                                d.type = type(stats)
-                                d.created_at = stats.birthtime
-                                d.last_modification = stats.mtime
-                                d.files = tree(`${path}/${item}`)
-
-                                console.log(d)
-                            }
-                        }
-                    }
-                })
-            })
-
-        }
     })
+    
+    return cwd.content
 }
 
-console.log(tree('./'))
+const generateBranches = (depth, isParentLast, braches = "") => {
+    if ( isParentLast[depth - 1] ) {
+        if ( (depth - 1) === 0 ) braches = INDENT + braches
+        else braches = generateBranches(depth - 1, isParentLast, INDENT + braches)
+    } else {
+        if ( (depth - 1) === 0 ) braches = VERTICAL + braches
+        else braches = generateBranches(depth-1, isParentLast, VERTICAL + braches)
+    }
+    return braches
+}
+
+const print = cwd => {
+    let tree = cwd.name + "\n"
+    cwd.content.map( item  => {
+        if ( item.content && item.content.length > 0 ) tree += print(item)
+        else tree += item.name + "\n"
+    })
+    return tree 
+}
+
+const cwd = { name: colored ? dirColor(cwdName) : cwdName , content: cwdContent(path) }
+if (!rawOutput) cwd.content = formatContent(cwd, 0, [false])
+
+console.log(print(cwd))
+console.log(`${directoriesNumber} directories, ${filesNumber} files`)
