@@ -82,10 +82,10 @@ const generateBranches = (depth, isParentLast, braches = "") => {
     return braches
 }
 
-const print = cwd => {
+const printBranch = cwd => {
     let tree = cwd.name + "\n"
     cwd.content.map( item  => {
-        if ( item.content && item.content.length > 0 ) tree += print(item)
+        if ( item.content && item.content.length > 0 ) tree += printBranch(item)
         else tree += item.name + "\n"
     })
     return tree 
@@ -94,5 +94,9 @@ const print = cwd => {
 const cwd = { name: colored ? dirColor(cwdName) : cwdName , content: cwdContent(path) }
 if (!rawOutput) cwd.content = formatContent(cwd, 0, [false])
 
-console.log(print(cwd))
-console.log(`${directoriesNumber} directories, ${filesNumber} files`)
+const printTree = () => {
+    console.log(printBranch(cwd))
+    console.log(`${directoriesNumber} directories, ${filesNumber} files`)
+}
+
+printTree()
